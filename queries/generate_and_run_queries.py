@@ -66,7 +66,8 @@ class DatasetProcessor:
                  llm_model_type: str,
                  llm_endpoint: str,
                  llm_port: int,
-                 joern_recreate_interval: int):
+                 joern_recreate_interval: int,
+                 api_key: str):
         """
         Initialize a dataset processor for a specific port and dataset slice.
 
@@ -80,6 +81,7 @@ class DatasetProcessor:
             llm_endpoint: URL/path for the LLM service.
             llm_port: Port for the LLM service.
             joern_recreate_interval: Number of samples to process before recreating Joern server.
+            api_key: API key for LLM service if required.
         """
         self.port = port
         self.dataset_slice = dataset_slice
@@ -90,6 +92,7 @@ class DatasetProcessor:
         self.llm_model_type = llm_model_type
         self.llm_endpoint = llm_endpoint
         self.llm_port = llm_port
+        self.api_key = api_key
 
         self.current_sample_uuid = ""
         self.sample_log_buffer = []
@@ -121,7 +124,7 @@ class DatasetProcessor:
 
         # Initialize components (intentionally after the event loop is setup)
         self.joern_manager = JoernManager(self.port, self.compose_file)
-        self.llm_manager = LLMManager(self.llm_model_type, self.llm_endpoint, port=self.llm_port)
+        self.llm_manager = LLMManager(self.llm_model_type, self.llm_endpoint, port=self.llm_port, api_key=self.api_key)
 
         active_joern_project = None # Track the currently loaded project filename
         try:
@@ -375,12 +378,14 @@ def main():
                         help="Number of samples to process before recreating a Joern server instance.")
 
     # LLM related arguments
-    parser.add_argument("--llm-model-type", type=str, choices=["vLLM", "DeepSeek"], default="vLLM", # Default based on original code
+    parser.add_argument("--llm-model-type", type=str, choices=["vLLM", "DeepSeek", "Transformers"], default="vLLM", # Default based on original code
                         help="Identifier string for the type of LLM model to use (e.g., 'vLLM', 'DeepSeek'). Passed to LLMManager.")
     parser.add_argument("--llm-endpoint", type=str, required=True,
-                        help="Endpoint URL or path for the LLM service (e.g., '/path/to/model' or 'http://host:port').")
+                        help="Endpoint URL or path for the LLM service--i.e. model name (e.g., '/path/to/model' or 'http://host:port').")
     parser.add_argument("--llm-port", type=int, default=9001,
                         help="Port number for the LLM service.")
+    parser.add_argument("--api-key", type=str, default=None,
+                        help="API key for LLM service if required.")
 
     args = parser.parse_args()
 
@@ -453,7 +458,8 @@ def main():
             llm_model_type=args.llm_model_type,
             llm_endpoint=args.llm_endpoint,
             llm_port=args.llm_port,
-            joern_recreate_interval=args.joern_recreate_interval
+            joern_recreate_interval=args.joern_recreate_interval,
+            api_key=args.api_key
         )
 
         thread = threading.Thread(target=processor.process_dataset, name=f"Worker-{i+1}")

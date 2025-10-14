@@ -1,13 +1,16 @@
 import json
-from enum import Enum
-from typing import List, Dict, Tuple, Any, Optional, Union
+from enum import StrEnum
+from typing import List, Dict, Any
 import requests
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-class Model(Enum):
+class Model(StrEnum):
     """Enum of supported LLM types"""
-    DEEPSEEK = 1
-    VLLM = 2
+    DEEPSEEK = "DeepSeek"
+    VLLM = "vLLM"
+    TRANSFORMERS = "Transformers"
+
 
 
 class LLMManager:
@@ -18,7 +21,7 @@ class LLMManager:
     - Extracting structured data from responses
     """
     
-    def __init__(self, model_type: Model, model_name: str, **kwargs):
+    def __init__(self, model_type: str, model_name: str, **kwargs):
         """
         Initialize the LLM client
         
@@ -34,7 +37,7 @@ class LLMManager:
                 - n/num_generations: Number of completions to generate
                 - port: Port for local vLLM server (default: 8081)
         """
-        self.model_type = model_type
+        self.model_type = Model(model_type)
         self.model_name = model_name
         self.api_key = kwargs.get("api_key")
         self.history = []
@@ -57,9 +60,14 @@ class LLMManager:
         # Set up the base URL based on model type
         if model_type == Model.DEEPSEEK:
             self.url = "https://api.deepseek.com"
-        else:
+        elif model_type == Model.VLLM:
             # vLLM hosted models
             self.url = f"http://localhost:{self.port}/v1/chat/completions"
+        elif model_type == Model.TRANSFORMERS:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
+        else:
+            raise ValueError(f"Unsupported model type: {model_type}")
 
     def send_prompt(self, prompt: str) -> Dict[str, Any]:
         """
@@ -109,6 +117,24 @@ class LLMManager:
                                            json=payload, 
                                            headers=headers)
                     response_data = response.json()
+            elif self.model_type == Model.TRANSFORMERS:
+                inputs = self.tokenizer.apply_chat_template(
+                    message_history,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                    return_dict=True,
+                    return_tensors="pt",
+                ).to(self.model.device)
+
+                outputs = self.model.generate(**inputs, max_new_tokens=self.kwargs["max_tokens"])
+                response_data = {
+                    "choices": [{
+                        "message": {
+                            "role": "assistant",
+                            "content": self.tokenizer.decode(outputs[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True)
+                        }
+                    }]
+                }
             else:
                 # For other APIs using requests
                 headers = {}
