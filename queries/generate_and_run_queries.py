@@ -241,23 +241,27 @@ class DatasetProcessor:
             # --- Generate CPGQL queries using LLM ---
             self._log_sample_message(logging.DEBUG, "Generating CPGQL queries using LLM.")
             prompt = gen_query_prompt(code_content)
+            print(f"Prompt to LLM:\n{prompt}\n")
             message_history = [{"role": "user", "content": prompt}]
 
             llm_response = self.llm_manager.send_messages(message_history)
             if not llm_response:
                 raise Exception("LLM response was empty or invalid.")
+            print(f"LLM Response:\n{llm_response}\n")
 
             completion_text = self.llm_manager.get_completion_text(llm_response)
             if not completion_text:
                  raise Exception("Failed to extract completion text from LLM response.")
+            print(f"LLM Completion Text:\n{completion_text}\n")
 
             llm_answer = self.llm_manager.extract_queries(completion_text)
             if not llm_answer or "queries" not in llm_answer or not isinstance(llm_answer["queries"], list):
                  self._log_sample_message(logging.WARNING, f"Failed to extract valid list of queries from LLM response. Response text: {completion_text}")
                  raise Exception("Failed to extract valid queries list from LLM response.")
+            print(f"LLM Extracted Queries:\n{llm_answer}\n")
 
             generated_queries = llm_answer["queries"]
-            self._log_sample_message(logging.INFO, f"LLM generated {len(generated_queries)} queries.")
+            self._log_sample_message(logging.INFO, f"LLM generated {len(generated_queries)} queries: {generated_queries}.")
             self._log_sample_message(logging.DEBUG, f"Generated Queries: {generated_queries}")
 
 
