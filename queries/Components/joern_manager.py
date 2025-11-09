@@ -153,8 +153,9 @@ class JoernManager:
             Tuple containing success flag and extracted paths
         """
         print("Running queries...")
-        # Running each query except the last one
-        for query in queries[:-1]:
+        # Running each query except the last one (TODO why?)
+        for query in queries:
+            print(f"Running query: {query}")
             try:
                 status, _ = self.run_query(query)
                 if status == QueryStatus.ERROR:

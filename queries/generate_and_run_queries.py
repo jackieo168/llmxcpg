@@ -66,7 +66,8 @@ class DatasetProcessor:
                  llm_model_type: str,
                  llm_endpoint: str,
                  llm_port: int,
-                 joern_recreate_interval: int):
+                 joern_recreate_interval: int,
+                 api_key: str):
         """
         Initialize a dataset processor for a specific port and dataset slice.
 
@@ -80,6 +81,7 @@ class DatasetProcessor:
             llm_endpoint: URL/path for the LLM service.
             llm_port: Port for the LLM service.
             joern_recreate_interval: Number of samples to process before recreating Joern server.
+            api_key: API key for LLM service if required.
         """
         self.port = port
         self.dataset_slice = dataset_slice
@@ -90,6 +92,7 @@ class DatasetProcessor:
         self.llm_model_type = llm_model_type
         self.llm_endpoint = llm_endpoint
         self.llm_port = llm_port
+        self.api_key = api_key
 
         self.current_sample_uuid = ""
         self.sample_log_buffer = []
@@ -121,7 +124,7 @@ class DatasetProcessor:
 
         # Initialize components (intentionally after the event loop is setup)
         self.joern_manager = JoernManager(self.port, self.compose_file)
-        self.llm_manager = LLMManager(self.llm_model_type, self.llm_endpoint, port=self.llm_port)
+        self.llm_manager = LLMManager(self.llm_model_type, self.llm_endpoint, port=self.llm_port, api_key=self.api_key)
 
         active_joern_project = None # Track the currently loaded project filename
         try:
@@ -238,23 +241,27 @@ class DatasetProcessor:
             # --- Generate CPGQL queries using LLM ---
             self._log_sample_message(logging.DEBUG, "Generating CPGQL queries using LLM.")
             prompt = gen_query_prompt(code_content)
+            print(f"Prompt to LLM:\n{prompt}\n")
             message_history = [{"role": "user", "content": prompt}]
 
             llm_response = self.llm_manager.send_messages(message_history)
             if not llm_response:
                 raise Exception("LLM response was empty or invalid.")
+            print(f"LLM Response:\n{llm_response}\n")
 
             completion_text = self.llm_manager.get_completion_text(llm_response)
             if not completion_text:
                  raise Exception("Failed to extract completion text from LLM response.")
+            print(f"LLM Completion Text:\n{completion_text}\n")
 
             llm_answer = self.llm_manager.extract_queries(completion_text)
             if not llm_answer or "queries" not in llm_answer or not isinstance(llm_answer["queries"], list):
                  self._log_sample_message(logging.WARNING, f"Failed to extract valid list of queries from LLM response. Response text: {completion_text}")
                  raise Exception("Failed to extract valid queries list from LLM response.")
+            print(f"LLM Extracted Queries:\n{llm_answer}\n")
 
             generated_queries = llm_answer["queries"]
-            self._log_sample_message(logging.INFO, f"LLM generated {len(generated_queries)} queries.")
+            self._log_sample_message(logging.INFO, f"LLM generated {len(generated_queries)} queries: {generated_queries}.")
             self._log_sample_message(logging.DEBUG, f"Generated Queries: {generated_queries}")
 
 
@@ -375,12 +382,14 @@ def main():
                         help="Number of samples to process before recreating a Joern server instance.")
 
     # LLM related arguments
-    parser.add_argument("--llm-model-type", type=str, choices=["vLLM", "DeepSeek"], default="vLLM", # Default based on original code
+    parser.add_argument("--llm-model-type", type=str, choices=["vLLM", "DeepSeek", "Transformers"], default="vLLM", # Default based on original code
                         help="Identifier string for the type of LLM model to use (e.g., 'vLLM', 'DeepSeek'). Passed to LLMManager.")
     parser.add_argument("--llm-endpoint", type=str, required=True,
-                        help="Endpoint URL or path for the LLM service (e.g., '/path/to/model' or 'http://host:port').")
+                        help="Endpoint URL or path for the LLM service--i.e. model name (e.g., '/path/to/model' or 'http://host:port').")
     parser.add_argument("--llm-port", type=int, default=9001,
                         help="Port number for the LLM service.")
+    parser.add_argument("--api-key", type=str, default=None,
+                        help="API key for LLM service if required.")
 
     args = parser.parse_args()
 
@@ -453,7 +462,8 @@ def main():
             llm_model_type=args.llm_model_type,
             llm_endpoint=args.llm_endpoint,
             llm_port=args.llm_port,
-            joern_recreate_interval=args.joern_recreate_interval
+            joern_recreate_interval=args.joern_recreate_interval,
+            api_key=args.api_key
         )
 
         thread = threading.Thread(target=processor.process_dataset, name=f"Worker-{i+1}")
